@@ -1,15 +1,17 @@
-import type { Audience, Cuisine, DishType, Recipe } from "../types";
+import type { Audience, Cuisine, DishType, MealTime, Recipe } from "../types";
 
 export interface Filters {
   audience: Audience | "all";
   dishType: DishType | "all";
   cuisine: Cuisine | "all";
+  mealTime: MealTime | "all";
 }
 
 export const DEFAULT_FILTERS: Filters = {
   audience: "all",
   dishType: "all",
   cuisine: "all",
+  mealTime: "all",
 };
 
 export interface MatchedRecipe {
@@ -46,6 +48,7 @@ export function matchIngredients(recipe: Recipe, fridge: string[]): MatchedRecip
 export function passesFilters(recipe: Recipe, filters: Filters): boolean {
   if (filters.cuisine !== "all" && recipe.cuisine !== filters.cuisine) return false;
   if (filters.dishType !== "all" && recipe.dishType !== filters.dishType) return false;
+  if (filters.mealTime !== "all" && !recipe.mealTimes.includes(filters.mealTime)) return false;
   if (filters.audience !== "all") {
     if (recipe.audience !== "both" && recipe.audience !== filters.audience) return false;
   }

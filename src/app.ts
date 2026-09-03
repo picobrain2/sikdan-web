@@ -34,6 +34,13 @@ let plannerPickerQuery = "";
 
 const MEAL_ORDER: MealTime[] = ["breakfast", "lunch", "dinner"];
 
+function todayIndex(): number {
+  const jsDay = new Date().getDay(); // 0 = Sunday
+  return jsDay === 0 ? 6 : jsDay - 1; // shift to 0 = Monday ... 6 = Sunday
+}
+
+let plannerDay: number = todayIndex();
+
 // ───────────────────────── helpers ─────────────────────────
 
 function esc(s: string): string {
@@ -191,6 +198,12 @@ function filterGroup(
 function renderFilterCard(): string {
   return `
     <section class="card">
+      ${filterGroup("mealTime", "끼니", [
+        { value: "all", label: "전체" },
+        { value: "breakfast", label: "아침" },
+        { value: "lunch", label: "점심" },
+        { value: "dinner", label: "저녁" },
+      ])}
       ${filterGroup("audience", "대상", [
         { value: "all", label: "전체" },
         { value: "adult", label: "어른용" },
@@ -272,30 +285,46 @@ function plannerSlot(day: number, meal: MealTime): PlannerSlot | undefined {
 }
 
 function renderPlannerCard(): string {
-  const headerCells = WEEKDAY_LABEL.map((d) => `<div class="planner-col-head">${d}</div>`).join("");
+  const today = todayIndex();
 
-  const rows = MEAL_ORDER.map((meal) => {
-    const cells = WEEKDAY_LABEL.map((_, day) => {
-      const slot = plannerSlot(day, meal);
-      if (slot) {
-        const recipe = findRecipe(slot.recipeId);
-        return `
-          <div class="planner-cell filled">
-            <button type="button" class="planner-cell-name" data-action="open-recipe" data-recipe-id="${slot.recipeId}">
-              ${recipe ? esc(recipe.name) : "(삭제된 레시피)"}
-            </button>
-            <button type="button" class="planner-cell-x" data-action="remove-planner-slot" data-day="${day}" data-meal="${meal}" aria-label="삭제">×</button>
-          </div>`;
-      }
-      return `
-        <button type="button" class="planner-cell empty" data-action="open-planner-picker" data-day="${day}" data-meal="${meal}">
-          + 추가
-        </button>`;
-    }).join("");
+  const dayTabs = WEEKDAY_LABEL.map((d, day) => {
+    const filledCount = planner.filter((s) => s.day === day).length;
+    const classes = [
+      "day-tab",
+      day === plannerDay ? "active" : "",
+      day === today ? "is-today" : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
     return `
-      <div class="planner-row">
-        <div class="planner-row-head">${MEAL_TIME_LABEL[meal]}</div>
-        ${cells}
+      <button type="button" class="${classes}" data-action="set-planner-day" data-day="${day}">
+        <span class="day-tab-label">${d}</span>
+        ${filledCount ? `<span class="day-tab-dot"></span>` : ""}
+      </button>`;
+  }).join("");
+
+  const mealRows = MEAL_ORDER.map((meal) => {
+    const slot = plannerSlot(plannerDay, meal);
+    let body: string;
+    if (slot) {
+      const recipe = findRecipe(slot.recipeId);
+      body = `
+        <div class="meal-slot filled">
+          <button type="button" class="meal-slot-name" data-action="open-recipe" data-recipe-id="${slot.recipeId}">
+            ${recipe ? `<span class="${cuisineBadgeClass(recipe.cuisine)}">${CUISINE_LABEL[recipe.cuisine]}</span> ${esc(recipe.name)}` : "(삭제된 레시피)"}
+          </button>
+          <button type="button" class="meal-slot-x" data-action="remove-planner-slot" data-day="${plannerDay}" data-meal="${meal}" aria-label="삭제">×</button>
+        </div>`;
+    } else {
+      body = `
+        <button type="button" class="meal-slot empty" data-action="open-planner-picker" data-day="${plannerDay}" data-meal="${meal}">
+          + 메뉴 추가
+        </button>`;
+    }
+    return `
+      <div class="meal-row">
+        <div class="meal-row-label">${MEAL_TIME_LABEL[meal]}</div>
+        ${body}
       </div>`;
   }).join("");
 
@@ -305,13 +334,8 @@ function renderPlannerCard(): string {
         <h2>📅 이번 주 식단표</h2>
         ${planner.length ? `<button type="button" class="btn-ghost btn-sm" data-action="reset-planner">초기화</button>` : ""}
       </div>
-      <div class="planner-table">
-        <div class="planner-row planner-head-row">
-          <div class="planner-row-head"></div>
-          ${headerCells}
-        </div>
-        ${rows}
-      </div>
+      <div class="day-tabs">${dayTabs}</div>
+      <div class="meal-rows">${mealRows}</div>
       <p class="hint">추천 카드나 레시피를 보다가 "식단표에 추가"를 눌러도 바로 넣을 수 있어요.</p>
     </section>
   `;
@@ -509,7 +533,7 @@ function onClick(e: MouseEvent): void {
       break;
     }
     case "start-assign": {
-      plannerAssignTarget = { day: new Date().getDay() === 0 ? 6 : new Date().getDay() - 1, meal: "dinner" };
+      plannerAssignTarget = { day: plannerDay, meal: "dinner" };
       render();
       break;
     }
@@ -523,6 +547,12 @@ function onClick(e: MouseEvent): void {
       savePlanner(planner);
       activeRecipeId = null;
       plannerAssignTarget = null;
+      plannerDay = day;
+      render();
+      break;
+    }
+    case "set-planner-day": {
+      plannerDay = Number(actionEl.dataset.day);
       render();
       break;
     }
