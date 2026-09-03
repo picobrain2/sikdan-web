@@ -1,0 +1,17 @@
+{
+  "name": "오늘 뭐 먹지 - 식단표",
+  "short_name": "오늘뭐먹지",
+  "description": "냉장고 재료로 반찬·국·메인 요리를 추천하고 일주일 식단표를 짜보세요.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#fff8ef",
+  "theme_color": "#ff8a3d",
+  "lang": "ko",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
