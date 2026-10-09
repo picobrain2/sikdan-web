@@ -1,4 +1,4 @@
 import "./style.css";
-import { render } from "./app";
+import { boot } from "./app";
 
-render();
+boot();

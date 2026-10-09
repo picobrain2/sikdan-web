@@ -1,5 +1,14 @@
 import { ALL_INGREDIENTS, INGREDIENT_GROUPS } from "./data/ingredients";
 import { RECIPES } from "./data/recipes";
+import { buildDailyCombo, comboGroups, comboIsEmpty, DailyCombo } from "./lib/combo";
+import {
+  armNotifySchedule,
+  notificationPermission,
+  notificationSupported,
+  requestNotificationPermission,
+  showComboNotification,
+} from "./lib/notify";
+import { isPantryStaple } from "./lib/pantry";
 import {
   DEFAULT_FILTERS,
   Filters,
@@ -7,7 +16,15 @@ import {
   pickRandom,
   recommend,
 } from "./lib/recommend";
-import { loadFridge, loadPlanner, savePlanner, saveFridge } from "./lib/storage";
+import {
+  loadFridge,
+  loadNotifySettings,
+  loadPlanner,
+  NotifySettings,
+  saveFridge,
+  saveNotifySettings,
+  savePlanner,
+} from "./lib/storage";
 import {
   AUDIENCE_LABEL,
   CUISINE_LABEL,
@@ -24,6 +41,8 @@ import {
 let fridge: string[] = loadFridge();
 let filters: Filters = { ...DEFAULT_FILTERS };
 let planner: PlannerSlot[] = loadPlanner();
+let notify: NotifySettings = loadNotifySettings();
+let notifyStatus = "";
 let ingredientQuery = "";
 let openCategory: string | null = INGREDIENT_GROUPS[0]?.label ?? null;
 
@@ -63,6 +82,15 @@ function cuisineBadgeClass(c: Recipe["cuisine"]): string {
   return `tag tag-cuisine-${c}`;
 }
 
+function currentCombo(): DailyCombo {
+  return buildDailyCombo(RECIPES, fridge, notify);
+}
+
+function persistNotify(next: NotifySettings): void {
+  notify = next;
+  saveNotifySettings(notify);
+}
+
 // ───────────────────────── root render ─────────────────────────
 
 let root: HTMLElement;
@@ -72,6 +100,7 @@ export function render(): void {
   root.innerHTML = renderApp();
   bindEvents();
   registerServiceWorker();
+  armNotifySchedule(notify, currentCombo());
 }
 
 function renderApp(): string {
@@ -83,6 +112,8 @@ function renderApp(): string {
       </header>
       <main class="content">
         ${renderFridgeCard()}
+        ${renderNotifyCard()}
+        ${renderComboCard()}
         ${renderFilterCard()}
         ${renderResultsCard()}
         ${renderPlannerCard()}
@@ -167,6 +198,7 @@ function renderFridgeCard(): string {
           ? `<div class="chip-row selected-row">${selectedChips}</div>`
           : `<p class="hint">아직 넣은 재료가 없어요. 재료 없이도 아래에서 추천을 받을 수 있어요!</p>`
       }
+      <p class="hint">소금·간장·기름·마늘 같은 기본 양념은 집에 있는 걸로 계산해요.</p>
 
       <div class="cat-tabs">${categoryTabs}</div>
       <div class="chip-row browse-row">${groupChips}</div>
@@ -192,6 +224,129 @@ function filterGroup(
       <span class="filter-label">${label}</span>
       <div class="filter-group">${buttons}</div>
     </div>
+  `;
+}
+
+function stepper(field: "sideCount" | "soupCount" | "mainCount", label: string, value: number, min: number, max: number): string {
+  return `
+    <div class="stepper">
+      <span class="stepper-label">${label}</span>
+      <div class="stepper-controls">
+        <button type="button" class="stepper-btn" data-action="nudge-notify" data-field="${field}" data-delta="-1" ${value <= min ? "disabled" : ""} aria-label="${label} 줄이기">−</button>
+        <span class="stepper-value">${value}</span>
+        <button type="button" class="stepper-btn" data-action="nudge-notify" data-field="${field}" data-delta="1" ${value >= max ? "disabled" : ""} aria-label="${label} 늘리기">+</button>
+      </div>
+    </div>
+  `;
+}
+
+function permissionHint(): string {
+  const perm = notificationPermission();
+  if (!notificationSupported() || perm === "unsupported") {
+    return "이 브라우저는 알림을 지원하지 않아요. 홈 화면에 추가한 뒤 다시 시도해 보세요.";
+  }
+  if (perm === "denied") {
+    return "알림이 차단되어 있어요. 브라우저 설정에서 허용해 주세요.";
+  }
+  if (perm === "granted" && notify.enabled) {
+    return `매일 ${notify.time}에 냉장고 재료로 만든 한 상을 알려줄게요. 아이폰은 홈 화면에 추가해야 알림이 와요.`;
+  }
+  if (perm === "granted") {
+    return "알림 권한은 있어요. 켜면 설정한 시간에 추천이 옵니다.";
+  }
+  return "알림을 켜면 권한을 요청해요. 아이폰은 홈 화면에 추가한 뒤에만 알림이 와요.";
+}
+
+function renderNotifyCard(): string {
+  return `
+    <section class="card notify-card" id="notify-card">
+      <div class="card-head">
+        <h2>🔔 매일 알림</h2>
+        <button type="button" class="btn-ghost btn-sm ${notify.enabled ? "btn-on" : ""}" data-action="toggle-notify">
+          ${notify.enabled ? "켜짐" : "꺼짐"}
+        </button>
+      </div>
+      <div class="notify-row">
+        <label class="notify-field">시간
+          <input type="time" id="notify-time" value="${esc(notify.time)}" />
+        </label>
+        <div class="notify-field">
+          <span>추천 끼니</span>
+          <div class="filter-group">
+            ${(["breakfast", "lunch", "dinner"] as MealTime[])
+              .map(
+                (m) =>
+                  `<button type="button" class="filter-btn ${notify.mealTime === m ? "active" : ""}" data-action="set-notify-meal" data-value="${m}">${MEAL_TIME_LABEL[m]}</button>`
+              )
+              .join("")}
+          </div>
+        </div>
+      </div>
+      <div class="stepper-row">
+        ${stepper("sideCount", "반찬", notify.sideCount, 0, 4)}
+        ${stepper("soupCount", "국·찌개", notify.soupCount, 0, 2)}
+        ${stepper("mainCount", "메인", notify.mainCount, 0, 2)}
+      </div>
+      <p class="hint">${esc(permissionHint())}</p>
+      ${notifyStatus ? `<p class="hint notify-status">${esc(notifyStatus)}</p>` : ""}
+      <div class="notify-actions">
+        <button type="button" class="btn-ghost" data-action="test-notify">지금 알림 보내보기</button>
+      </div>
+    </section>
+  `;
+}
+
+function renderComboCard(): string {
+  const combo = currentCombo();
+  const groups = comboGroups(combo);
+  const empty = comboIsEmpty(combo);
+  const firstMain = combo.mains[0];
+
+  const groupHtml = empty
+    ? `<p class="hint empty-hint">조건에 맞는 한 상이 없어요. 냉장고 재료를 더 넣거나 개수를 줄여 보세요.</p>`
+    : groups
+        .map(
+          (g) => `
+        <div class="combo-group">
+          <h3>${esc(g.label)}</h3>
+          <div class="combo-list">
+            ${g.items
+              .map((m) => {
+                const badge = fridge.length
+                  ? m.isFullMatch
+                    ? `<span class="badge badge-full">바로 가능</span>`
+                    : `<span class="badge badge-partial">${m.missing.length}개 부족</span>`
+                  : "";
+                return `
+                  <button type="button" class="combo-item" data-action="open-recipe" data-recipe-id="${m.recipe.id}">
+                    <span class="combo-item-name">${esc(m.recipe.name)}</span>
+                    <span class="combo-item-meta">⏱ ${m.recipe.time}분 ${badge}</span>
+                    ${!m.isFullMatch && fridge.length ? `<span class="missing-line">부족한 재료: ${m.missing.map(esc).join(", ")}</span>` : ""}
+                  </button>`;
+              })
+              .join("")}
+          </div>
+        </div>`
+        )
+        .join("");
+
+  return `
+    <section class="card combo-card" id="today-combo">
+      <div class="card-head">
+        <h2>🍽 오늘의 ${MEAL_TIME_LABEL[combo.mealTime]} 한 상</h2>
+      </div>
+      <p class="hint">${
+        fridge.length
+          ? "냉장고에 있는 재료로 만들 수 있는 조합이에요. 기본 양념은 있는 걸로 봤어요."
+          : "냉장고 재료가 없어서 오늘의 추천으로 한 상을 골랐어요."
+      }</p>
+      ${groupHtml}
+      ${
+        firstMain
+          ? `<button type="button" class="btn-primary btn-block" data-action="assign-combo-main" data-recipe-id="${firstMain.recipe.id}">메인 요리를 식단표에 넣기</button>`
+          : ""
+      }
+    </section>
   `;
 }
 
@@ -356,8 +511,9 @@ function renderRecipeModal(id: string): string {
 
   const ingredientsHtml = r.ingredients
     .map((ing) => {
-      const has = fridgeSet.has(ing.trim().toLowerCase());
-      return `<li class="${has ? "have" : "missing"}">${has ? "✅" : "▫️"} ${esc(ing)}</li>`;
+      const has = fridgeSet.has(ing.trim().toLowerCase()) || isPantryStaple(ing);
+      const mark = isPantryStaple(ing) ? "🧂" : has ? "✅" : "▫️";
+      return `<li class="${has ? "have" : "missing"}">${mark} ${esc(ing)}${isPantryStaple(ing) ? " <small>기본 양념</small>" : ""}</li>`;
     })
     .join("");
 
@@ -451,10 +607,15 @@ function renderPickerModal(target: { day: number; meal: MealTime }): string {
 
 // ───────────────────────── events ─────────────────────────
 
+let eventsBound = false;
+
 function bindEvents(): void {
+  if (eventsBound) return;
+  eventsBound = true;
   root.addEventListener("click", onClick);
   root.addEventListener("keydown", onKeydown);
   root.addEventListener("input", onInput);
+  root.addEventListener("change", onChange);
 }
 
 function onClick(e: MouseEvent): void {
@@ -590,7 +751,76 @@ function onClick(e: MouseEvent): void {
       render();
       break;
     }
+    case "toggle-notify": {
+      void toggleNotify();
+      break;
+    }
+    case "set-notify-meal": {
+      persistNotify({ ...notify, mealTime: actionEl.dataset.value as MealTime });
+      render();
+      break;
+    }
+    case "nudge-notify": {
+      const field = actionEl.dataset.field as "sideCount" | "soupCount" | "mainCount";
+      const delta = Number(actionEl.dataset.delta);
+      const max = field === "sideCount" ? 4 : 2;
+      const next = Math.min(max, Math.max(0, notify[field] + delta));
+      persistNotify({ ...notify, [field]: next });
+      render();
+      break;
+    }
+    case "test-notify": {
+      void sendTestNotify();
+      break;
+    }
+    case "assign-combo-main": {
+      const recipeId = actionEl.dataset.recipeId!;
+      planner = [
+        ...planner.filter((s) => !(s.day === plannerDay && s.meal === notify.mealTime)),
+        { day: plannerDay, meal: notify.mealTime, recipeId },
+      ];
+      savePlanner(planner);
+      notifyStatus = `${WEEKDAY_LABEL[plannerDay]}요일 ${MEAL_TIME_LABEL[notify.mealTime]}에 넣었어요.`;
+      render();
+      document.getElementById("today-combo")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      break;
+    }
   }
+}
+
+async function toggleNotify(): Promise<void> {
+  if (notify.enabled) {
+    persistNotify({ ...notify, enabled: false });
+    notifyStatus = "알림을 껐어요.";
+    render();
+    return;
+  }
+  const perm = await requestNotificationPermission();
+  if (perm !== "granted") {
+    notifyStatus = perm === "denied"
+      ? "알림이 차단되어 있어요. 브라우저 설정에서 허용해 주세요."
+      : "알림 권한을 허용해야 켤 수 있어요.";
+    persistNotify({ ...notify, enabled: false });
+    render();
+    return;
+  }
+  persistNotify({ ...notify, enabled: true });
+  notifyStatus = `매일 ${notify.time}에 알려줄게요.`;
+  render();
+}
+
+async function sendTestNotify(): Promise<void> {
+  const perm = notificationPermission() === "granted"
+    ? "granted"
+    : await requestNotificationPermission();
+  if (perm !== "granted") {
+    notifyStatus = "알림 권한을 먼저 허용해 주세요.";
+    render();
+    return;
+  }
+  const ok = await showComboNotification(currentCombo(), false);
+  notifyStatus = ok ? "알림을 보냈어요. 알림함을 확인해 보세요." : "알림을 보내지 못했어요.";
+  render();
 }
 
 function onKeydown(e: KeyboardEvent): void {
@@ -611,6 +841,18 @@ function onKeydown(e: KeyboardEvent): void {
     plannerAssignTarget = null;
     plannerPickerTarget = null;
     render();
+  }
+}
+
+function onChange(e: Event): void {
+  const target = e.target as HTMLElement;
+  if (target.id === "notify-time") {
+    const value = (target as HTMLInputElement).value;
+    if (/^\d{2}:\d{2}$/.test(value)) {
+      persistNotify({ ...notify, time: value });
+      notifyStatus = notify.enabled ? `이제 매일 ${value}에 알려줄게요.` : "";
+      render();
+    }
   }
 }
 
@@ -640,12 +882,34 @@ function onInput(e: Event): void {
 
 // ───────────────────────── PWA ─────────────────────────
 
+let swRegistered = false;
+
 function registerServiceWorker(): void {
-  if ("serviceWorker" in navigator) {
-    window.addEventListener("load", () => {
-      navigator.serviceWorker.register("./sw.js").catch(() => {
-        // offline support is a nice-to-have; ignore failures (e.g. dev server)
-      });
-    });
+  if (swRegistered || !("serviceWorker" in navigator)) return;
+  swRegistered = true;
+  navigator.serviceWorker.register("./sw.js").catch(() => {});
+  navigator.serviceWorker.addEventListener("message", (event) => {
+    if (event.data?.type === "OPEN_TODAY_COMBO") {
+      document.getElementById("today-combo")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  });
+}
+
+function consumeTodayDeepLink(): void {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("today") === "1" || window.location.hash === "#today") {
+    window.setTimeout(() => {
+      document.getElementById("today-combo")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 80);
   }
+}
+
+export function boot(): void {
+  render();
+  consumeTodayDeepLink();
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      armNotifySchedule(notify, currentCombo());
+    }
+  });
 }

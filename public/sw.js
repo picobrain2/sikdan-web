@@ -1,4 +1,4 @@
-const CACHE = "sikdan-cache-v1";
+const CACHE = "sikdan-cache-v2";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
@@ -31,6 +31,22 @@ self.addEventListener("fetch", (event) => {
         })
         .catch(() => cached);
       return cached || network;
+    })
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const target = event.notification.data?.url || "./?today=1";
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+      for (const client of clients) {
+        if ("focus" in client) {
+          client.postMessage({ type: "OPEN_TODAY_COMBO" });
+          return client.focus();
+        }
+      }
+      return self.clients.openWindow(target);
     })
   );
 });

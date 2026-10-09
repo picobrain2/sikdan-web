@@ -1,4 +1,5 @@
 import type { Audience, Cuisine, DishType, MealTime, Recipe } from "../types";
+import { requiredIngredients } from "./pantry";
 
 export interface Filters {
   audience: Audience | "all";
@@ -31,8 +32,9 @@ function normalize(s: string): string {
 
 export function matchIngredients(recipe: Recipe, fridge: string[]): MatchedRecipe {
   const fridgeSet = new Set(fridge.map(normalize));
-  const total = recipe.ingredients.length;
-  const missing = recipe.ingredients.filter((ing) => !fridgeSet.has(normalize(ing)));
+  const needed = requiredIngredients(recipe.ingredients);
+  const total = needed.length;
+  const missing = needed.filter((ing) => !fridgeSet.has(normalize(ing)));
   const haveCount = total - missing.length;
   const score = total === 0 ? 1 : haveCount / total;
   return {

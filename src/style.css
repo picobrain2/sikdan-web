@@ -429,11 +429,110 @@ input, select, textarea { font-family: inherit; font-size: 16px; }
   margin-top: 20px;
 }
 
+.btn-on {
+  background: var(--green-soft);
+  border-color: var(--green);
+  color: var(--green);
+}
+
+.notify-row {
+  display: grid;
+  gap: 12px;
+  margin: 8px 0 12px;
+}
+.notify-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+}
+.notify-field input[type="time"] {
+  width: 100%;
+  max-width: 160px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #fffdf9;
+  color: var(--text);
+}
+.stepper-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.stepper {
+  border: 1px solid var(--line);
+  background: #fffdf9;
+  border-radius: 12px;
+  padding: 10px 8px;
+  text-align: center;
+}
+.stepper-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.stepper-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.stepper-btn {
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: #fff;
+  color: var(--text);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.stepper-btn:disabled { opacity: 0.35; cursor: default; }
+.stepper-value { min-width: 1.2em; font-size: 18px; font-weight: 800; }
+.notify-actions { margin-top: 10px; }
+.notify-status { color: var(--accent-dark); }
+
+.combo-group { margin-top: 12px; }
+.combo-group h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.combo-list { display: grid; gap: 8px; }
+.combo-item {
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  border: 1px solid var(--line);
+  background: #fffdf9;
+  border-radius: 12px;
+  padding: 12px;
+  cursor: pointer;
+  color: inherit;
+}
+.combo-item:hover { border-color: var(--accent); }
+.combo-item-name { font-weight: 700; font-size: 15px; }
+.combo-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.ingredient-list small { color: var(--muted); font-weight: 500; }
+
 @media (max-width: 480px) {
   .topbar { padding: 20px 16px 12px; }
   .topbar h1 { font-size: 21px; }
   .card { padding: 14px; }
   .content { gap: 12px; }
+  .stepper-row { grid-template-columns: 1fr; }
   .results-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
   .day-tab { min-width: 38px; padding: 8px 4px; font-size: 12px; }
   .meal-row { grid-template-columns: 40px 1fr; }
